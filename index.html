@@ -34,7 +34,6 @@
     </div>
     <div id="errArea" class="error-message"></div>
     
-    <!-- Connected Credits Link Routing to team.html -->
     <div class="team-btn-box">
         <a href="team.html" class="team-link-btn" target="_self">Click Here for Project Team & Evaluation Details →</a>
         <p class="credits-text">All Rights Reserved © Team #01 - CS Division 2026</p>
@@ -55,7 +54,7 @@
         displayArea.style.display = "block";
 
         try {
-            const hostDomain = 'https://onrender.com';
+            const hostDomain = window.location.origin;
             const apiEndpoint = `${hostDomain}/summarize`;
             
             const serverResponse = await fetch(apiEndpoint, {
@@ -77,7 +76,7 @@
             txtResponse.innerText = jsonResult.summary;
             
             const audioPlayer = document.getElementById('audioStream');
-            audioPlayer.src = jsonResult.audio_url;
+            audioPlayer.src = `${hostDomain}${jsonResult.audio_url}`;
             audioPlayer.load();
             
         } catch (netError) {
