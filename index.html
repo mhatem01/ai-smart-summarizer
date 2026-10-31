@@ -8,20 +8,22 @@
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; padding: 50px; color: #333; }
         .wrapper { max-width: 650px; background: #ffffff; padding: 35px; border-radius: 8px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         h2 { margin-bottom: 25px; color: #111; font-weight: 600; text-align: center; }
-        textarea, input { width: 100%; padding: 12px; border-radius: 4px; border: 1px solid #ddd; box-sizing: border-box; margin-bottom: 20px; font-size: 14px; }
-        textarea { height: 140px; resize: vertical; }
+        textarea { width: 100%; padding: 12px; border-radius: 4px; border: 1px solid #ddd; box-sizing: border-box; margin-bottom: 20px; font-size: 14px; height: 140px; resize: vertical; }
         button { background-color: #0066cc; color: #fff; border: none; padding: 14px 20px; font-size: 15px; font-weight: bold; cursor: pointer; border-radius: 4px; width: 100%; transition: background 0.2s; }
         button:hover { background-color: #0052a3; }
         .output-box { margin-top: 30px; padding: 20px; background-color: #f1f3f5; border-radius: 4px; text-align: left; display: none; }
         .error-message { color: #cc0000; font-weight: bold; margin-top: 15px; text-align: center; }
+        .team-btn-box { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; }
+        .team-link-btn { display: inline-block; background-color: #28a745; color: white; text-decoration: none; padding: 10px 20px; font-size: 13px; font-weight: bold; border-radius: 4px; transition: background 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .team-link-btn:hover { background-color: #218838; }
+        .credits-text { text-align: center; font-size: 11px; color: #888; margin-top: 15px; font-weight: 500; }
     </style>
 </head>
 <body>
 
 <div class="wrapper">
-    <h2>Secure AI Text Summarizer</h2>
+    <h2>AI Text Summarizer</h2>
     
-    <input type="password" id="tokenField" placeholder="Enter security access token...">
     <textarea id="rawTextField" placeholder="Paste your long article or document text here..."></textarea>
     <button onclick="requestProcessing()">Generate Audio & Summary</button>
 
@@ -32,43 +34,40 @@
     </div>
     <div id="errArea" class="error-message"></div>
     
-    <!-- Academic credits baseline -->
-    <p style="text-align: center; font-size: 11px; color: #888; margin-top: 40px;">
-        Developed by Team #01 - CS Division © 2026
-    </p>
+    <!-- Connected Credits Link Routing to team.html -->
+    <div class="team-btn-box">
+        <a href="team.html" class="team-link-btn" target="_self">Click Here for Project Team & Evaluation Details →</a>
+        <p class="credits-text">All Rights Reserved © Team #01 - CS Division 2026</p>
+    </div>
 </div>
 
 <script>
     async function requestProcessing() {
         const textPayload = document.getElementById('rawTextField').value;
-        const securityToken = document.getElementById('tokenField').value;
         const errArea = document.getElementById('errArea');
         const displayArea = document.getElementById('displayArea');
         const txtResponse = document.getElementById('txtResponse');
 
         errArea.innerText = "";
-        if (!securityToken) return alert("Access token is mandatory!");
         if (!textPayload) return alert("Please provide some text to process!");
 
-        txtResponse.innerText = "Verifying credentials and processing text data...";
+        txtResponse.innerText = "Processing text data and generating summary...";
         displayArea.style.display = "block";
 
         try {
-            // Live deployment endpoint fallback
             const apiEndpoint = 'https://onrender.com';
             
             const serverResponse = await fetch(apiEndpoint, {
                 method: 'POST',
                 headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + securityToken
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ text: textPayload })
             });
 
-            if (serverResponse.status === 401) {
+            if (!serverResponse.ok) {
                 displayArea.style.display = "none";
-                errArea.innerText = "Error 401: Invalid security token or access restricted.";
+                errArea.innerText = "Error: Server rejected the request or returned an error.";
                 return;
             }
 
