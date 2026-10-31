@@ -34,7 +34,11 @@ if not os.path.exists(AUDIO_DIR):
 
 app.mount("/static", StaticFiles(directory=AUDIO_DIR), name="static")
 
-client = genai.Client()
+api_key = os.environ.get("GEMINI_API_KEY")
+if not api_key:
+    client = None
+else:
+    client = genai.Client(api_key=api_key)
 
 class Payload(BaseModel):
     text: str
@@ -43,6 +47,9 @@ def is_arabic(text: str) -> bool:
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
 def generate_ai_summary(input_text: str, target_lang: str) -> str:
+    if not client:
+        raise ValueError("AI Client is not initialized. Please verify your GEMINI_API_KEY on Render.")
+        
     if target_lang == "ar":
         prompt = f"Summarize the following article clearly and concisely in Arabic:\n\n{input_text}"
     else:
