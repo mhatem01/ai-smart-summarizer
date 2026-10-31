@@ -27,25 +27,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-AUDIO_DIR = "static"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+AUDIO_DIR = os.path.join(BASE_DIR, "static")
 if not os.path.exists(AUDIO_DIR):
     os.makedirs(AUDIO_DIR)
 
 app.mount("/static", StaticFiles(directory=AUDIO_DIR), name="static")
 
-# Initializing Google GenAI Client
 client = genai.Client()
 
 class Payload(BaseModel):
     text: str
 
 def is_arabic(text: str) -> bool:
-    # Pattern to verify if characters fall inside Arabic Unicode Range
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
 def generate_ai_summary(input_text: str, target_lang: str) -> str:
     if target_lang == "ar":
-        prompt = f"قم بتلخيص المقال التالي بأسلوب واضح، مختصر، ومفهوم:\n\n{input_text}"
+        prompt = f"Summarize the following article clearly and concisely in Arabic:\n\n{input_text}"
     else:
         prompt = f"Summarize the following article in a clear, concise, and professional manner:\n\n{input_text}"
         
@@ -57,24 +56,26 @@ def generate_ai_summary(input_text: str, target_lang: str) -> str:
 
 @app.get("/")
 async def read_index():
-    return FileResponse("index.html")
+    index_path = os.path.join(BASE_DIR, "index.html")
+    if not os.path.exists(index_path):
+        raise HTTPException(status_code=404, detail="index.html not found on server.")
+    return FileResponse(index_path)
 
 @app.get("/team.html")
 async def read_team():
-    return FileResponse("team.html")
+    team_path = os.path.join(BASE_DIR, "team.html")
+    if not os.path.exists(team_path):
+        raise HTTPException(status_code=404, detail="team.html not found on server.")
+    return FileResponse(team_path)
 
 @app.post("/summarize")
 async def handle_summary(data: Payload):
     if not data.text or not data.text.strip():
         raise HTTPException(status_code=400, detail="Input text cannot be empty.")
     try:
-        # Detect character structure to configure proper output localization
         lang_code = "ar" if is_arabic(data.text) else "en"
-        
-        # Request context summarization from live AI structural models
         result_text = generate_ai_summary(data.text, lang_code)
         
-        # Audio rendering execution path using designated localization settings
         tts_engine = gTTS(text=result_text, lang=lang_code, slow=False)
         filename = "summary_audio.mp3"
         tts_engine.save(os.path.join(AUDIO_DIR, filename))
@@ -86,3 +87,8 @@ async def handle_summary(data: Payload):
         }
     except Exception as err:
         raise HTTPException(status_code=500, detail=str(err))
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
