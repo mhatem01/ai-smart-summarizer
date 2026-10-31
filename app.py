@@ -12,10 +12,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from google import genai
 from gtts import gTTS
 import os
 import re
+import requests
 
 app = FastAPI()
 
@@ -34,32 +34,44 @@ if not os.path.exists(AUDIO_DIR):
 
 app.mount("/static", StaticFiles(directory=AUDIO_DIR), name="static")
 
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key:
-    client = None
-else:
-    client = genai.Client(api_key=api_key)
-
 class Payload(BaseModel):
     text: str
 
 def is_arabic(text: str) -> bool:
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
-def generate_ai_summary(input_text: str, target_lang: str) -> str:
-    if not client:
-        raise ValueError("AI Client is not initialized. Please verify your GEMINI_API_KEY on Render.")
-        
+def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
+    api_url = "https://huggingface.co"
+    
+    hf_token = os.environ.get("HF_API_KEY", "")
+    headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
+    
     if target_lang == "ar":
-        prompt = f"Summarize the following article clearly and concisely in Arabic:\n\n{input_text}"
+        system_prompt = "Summarize the following article clearly and concisely in Arabic:"
     else:
-        prompt = f"Summarize the following article in a clear, concise, and professional manner:\n\n{input_text}"
+        system_prompt = "Summarize the following article in a clear, concise, and professional manner in English only:"
         
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
-    )
-    return response.text.strip()
+    payload = {
+        "inputs": f"<|system|>\n{system_prompt}\n<|user|>\n{input_text}\n<|assistant|>\n",
+        "parameters": {
+            "max_new_tokens": 250,
+            "temperature": 0.7
+        }
+    }
+    
+    response = requests.post(api_url, json=payload, headers=headers)
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="External AI provider failed to respond.")
+        
+    result = response.json()
+    
+    if isinstance(result, list) and len(result) > 0 and "generated_text" in result[0]:
+        full_output = result[0]["generated_text"]
+        parsed_summary = full_output.split("<|assistant|>\n")[-1].strip()
+        return parsed_summary
+        
+    return "Summary generation complete."
 
 @app.get("/")
 async def read_index():
@@ -81,7 +93,7 @@ async def handle_summary(data: Payload):
         raise HTTPException(status_code=400, detail="Input text cannot be empty.")
     try:
         lang_code = "ar" if is_arabic(data.text) else "en"
-        result_text = generate_ai_summary(data.text, lang_code)
+        result_text = generate_external_ai_summary(data.text, lang_code)
         
         tts_engine = gTTS(text=result_text, lang=lang_code, slow=False)
         filename = "summary_audio.mp3"
@@ -94,8 +106,3 @@ async def handle_summary(data: Payload):
         }
     except Exception as err:
         raise HTTPException(status_code=500, detail=str(err))
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
