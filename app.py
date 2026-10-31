@@ -47,6 +47,10 @@ def parse_and_summarize(input_text: str):
 async def read_index():
     return FileResponse("index.html")
 
+@app.get("/team.html")
+async def read_team():
+    return FileResponse("team.html")
+
 @app.post("/summarize")
 async def handle_summary(data: Payload):
     if not data.text or not data.text.strip():
