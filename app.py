@@ -41,37 +41,42 @@ def is_arabic(text: str) -> bool:
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
 def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
-    api_url = "https://huggingface.co"
-    
-    hf_token = os.environ.get("HF_API_KEY", "")
-    headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
+    api_url = "https://groq.com"
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is not configured.")
+        
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
     
     if target_lang == "ar":
-        system_prompt = "Summarize the following article clearly and concisely in Arabic:"
+        system_prompt = "قم بتلخيص المقال التالي بأسلوب واضح، مختصر، ومفهوم باللغة العربية فقط وبدون أي مقدمات:"
     else:
-        system_prompt = "Summarize the following article in a clear, concise, and professional manner in English only:"
+        system_prompt = "Summarize the following article in a clear, concise, and professional manner in English only without any introductory text:"
         
     payload = {
-        "inputs": f"<|system|>\n{system_prompt}\n<|user|>\n{input_text}\n<|assistant|>\n",
-        "parameters": {
-            "max_new_tokens": 250,
-            "temperature": 0.7
-        }
+        "model": "llama-3.1-8b-instant",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": input_text}
+        ],
+        "temperature": 0.5,
+        "max_tokens": 500
     }
     
     response = requests.post(api_url, json=payload, headers=headers)
     
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail="External AI provider failed to respond.")
+        raise HTTPException(status_code=502, detail=f"External AI engine integration error: {response.text}")
         
-    result = response.json()
+    result_data = response.json()
     
-    if isinstance(result, list) and len(result) > 0 and "generated_text" in result[0]:
-        full_output = result[0]["generated_text"]
-        parsed_summary = full_output.split("<|assistant|>\n")[-1].strip()
-        return parsed_summary
-        
-    return "Summary generation complete."
+    try:
+        return result_data["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError):
+        raise HTTPException(status_code=502, detail="Failed to map message contents from external AI payload.")
 
 @app.get("/")
 async def read_index():
