@@ -44,7 +44,7 @@ def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
     api_url = "https://groq.com"
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is not configured.")
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing on Render.")
         
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -52,31 +52,31 @@ def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
     }
     
     if target_lang == "ar":
-        system_prompt = "قم بتلخيص المقال التالي بأسلوب واضح، مختصر، ومفهوم باللغة العربية فقط وبدون أي مقدمات:"
+        system_prompt = "Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:"
     else:
-        system_prompt = "Summarize the following article in a clear, concise, and professional manner in English only without any introductory text:"
+        system_prompt = "Summarize the following text clearly and concisely in English without any introductory or conversational text:"
         
     payload = {
-        "model": "llama-3.3-7b-versatile",
+        "model": "llama3-8b-8192",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": input_text}
         ],
-        "temperature": 0.3,
-        "max_tokens": 600
+        "temperature": 0.2,
+        "max_tokens": 500
     }
     
     response = requests.post(api_url, json=payload, headers=headers)
     
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"External AI provider status {response.status_code}: {response.text}")
+        raise HTTPException(status_code=502, detail=f"External AI system error {response.status_code}: {response.text}")
         
     result_data = response.json()
     
     try:
         return result_data["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, TypeError):
-        raise HTTPException(status_code=502, detail="Failed to map message contents from external AI payload structure.")
+        raise HTTPException(status_code=502, detail="Invalid data structure from external AI engine.")
 
 @app.get("/")
 async def read_index():
