@@ -57,26 +57,26 @@ def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
         system_prompt = "Summarize the following article in a clear, concise, and professional manner in English only without any introductory text:"
         
     payload = {
-        "model": "llama-3.1-8b-instant",
+        "model": "llama-3.3-7b-versatile",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": input_text}
         ],
-        "temperature": 0.5,
-        "max_tokens": 500
+        "temperature": 0.3,
+        "max_tokens": 600
     }
     
     response = requests.post(api_url, json=payload, headers=headers)
     
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"External AI engine integration error: {response.text}")
+        raise HTTPException(status_code=502, detail=f"External AI provider status {response.status_code}: {response.text}")
         
     result_data = response.json()
     
     try:
         return result_data["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError):
-        raise HTTPException(status_code=502, detail="Failed to map message contents from external AI payload.")
+    except (KeyError, IndexError, TypeError):
+        raise HTTPException(status_code=502, detail="Failed to map message contents from external AI payload structure.")
 
 @app.get("/")
 async def read_index():
