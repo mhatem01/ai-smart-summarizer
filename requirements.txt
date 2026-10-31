@@ -1,4 +1,5 @@
 fastapi
 uvicorn
-gTTS
+gtts
 pydantic
+aiofiles
