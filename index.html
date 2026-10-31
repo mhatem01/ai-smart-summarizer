@@ -55,8 +55,8 @@
         displayArea.style.display = "block";
 
         try {
-            // Your production live Render endpoint successfully integrated here
-            const apiEndpoint = 'https://onrender.com';
+            const hostDomain = 'https://onrender.com';
+            const apiEndpoint = `${hostDomain}/summarize`;
             
             const serverResponse = await fetch(apiEndpoint, {
                 method: 'POST',
@@ -73,8 +73,13 @@
             }
 
             const jsonResult = await serverResponse.json();
+            
             txtResponse.innerText = jsonResult.summary;
-            document.getElementById('audioStream').src = jsonResult.audio_url;
+            
+            const audioPlayer = document.getElementById('audioStream');
+            audioPlayer.src = jsonResult.audio_url;
+            audioPlayer.load();
+            
         } catch (netError) {
             displayArea.style.display = "none";
             errArea.innerText = "Failed to connect to the cloud service backend.";
