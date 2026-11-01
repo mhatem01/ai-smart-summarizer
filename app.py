@@ -1,88 +1,118 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Smart Summarizer App</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; padding: 50px; color: #333; }
-        .wrapper { max-width: 650px; background: #ffffff; padding: 35px; border-radius: 8px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        h2 { margin-bottom: 25px; color: #111; font-weight: 600; text-align: center; }
-        textarea { width: 100%; padding: 12px; border-radius: 4px; border: 1px solid #ddd; box-sizing: border-box; margin-bottom: 20px; font-size: 14px; height: 140px; resize: vertical; }
-        button { background-color: #0066cc; color: #fff; border: none; padding: 14px 20px; font-size: 15px; font-weight: bold; cursor: pointer; border-radius: 4px; width: 100%; transition: background 0.2s; }
-        button:hover { background-color: #0052a3; }
-        .output-box { margin-top: 30px; padding: 20px; background-color: #f1f3f5; border-radius: 4px; text-align: left; display: none; }
-        .error-message { color: #cc0000; font-weight: bold; margin-top: 15px; text-align: center; }
-        .team-btn-box { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; }
-        .team-link-btn { display: inline-block; background-color: #28a745; color: white; text-decoration: none; padding: 10px 20px; font-size: 13px; font-weight: bold; border-radius: 4px; transition: background 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .team-link-btn:hover { background-color: #218838; }
-        .credits-text { text-align: center; font-size: 11px; color: #888; margin-top: 15px; font-weight: 500; }
-    </style>
-</head>
-<body>
+# --------------------------------------------------------
+# Core Backend Service
+# Domain: Engineering and Technology
+# Focus: Applied Mathematics and Artificial Intelligence
+# Field: Computer and Data Science
+# Created by: MOHAMED HATEM MOHAMED ABDELAZIZ MOHAMED 
+#           & EBRAHIM MOHAMED EBRAHIM HAMADA RASAD
+# --------------------------------------------------------
 
-<div class="wrapper">
-    <h2>AI Text Summarizer</h2>
-    
-    <textarea id="rawTextField" placeholder="Paste your long article or document text here..."></textarea>
-    <button onclick="requestProcessing()">Generate Audio & Summary</button>
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from gtts import gTTS
+import os
+import re
+import requests
 
-    <div id="displayArea" class="output-box">
-        <h3>Key Summary Insights:</h3>
-        <p id="txtResponse"></p>
-        <audio id="audioStream" controls style="width: 100%; margin-top: 15px;"></audio>
-    </div>
-    <div id="errArea" class="error-message"></div>
-    
-    <div class="team-btn-box">
-        <a href="team.html" class="team-link-btn" target="_self">Click Here for Project Team & Evaluation Details →</a>
-        <p class="credits-text">All Rights Reserved © Team #01 - CS Division 2026</p>
-    </div>
-</div>
+app = FastAPI()
 
-<script>
-    async function requestProcessing() {
-        const textPayload = document.getElementById('rawTextField').value;
-        const errArea = document.getElementById('errArea');
-        const displayArea = document.getElementById('displayArea');
-        const txtResponse = document.getElementById('txtResponse');
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-        errArea.innerText = "";
-        if (!textPayload) return alert("Please provide some text to process!");
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+AUDIO_DIR = os.path.join(BASE_DIR, "static")
+if not os.path.exists(AUDIO_DIR):
+    os.makedirs(AUDIO_DIR)
 
-        txtResponse.innerText = "Processing text data and generating summary...";
-        displayArea.style.display = "block";
+app.mount("/static", StaticFiles(directory=AUDIO_DIR), name="static")
 
-        try {
-            const hostDomain = window.location.origin;
-            const apiEndpoint = `${hostDomain}/summarize`;
-            
-            const serverResponse = await fetch(apiEndpoint, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ text: textPayload })
-            });
+class Payload(BaseModel):
+    text: str
 
-            if (!serverResponse.ok) {
-                displayArea.style.display = "none";
-                errArea.innerText = "Error: Server rejected the request or returned an error.";
-                return;
-            }
+def is_arabic(text: str) -> bool:
+    return bool(re.search(r'[\u0600-\u06FF]', text))
 
-            const jsonResult = await serverResponse.json();
-            txtResponse.innerText = jsonResult.summary;
-            
-            const audioPlayer = document.getElementById('audioStream');
-            audioPlayer.src = `${hostDomain}${jsonResult.audio_url}`;
-            audioPlayer.load();
-            
-        } catch (netError) {
-            displayArea.style.display = "none";
-            errArea.innerText = "Failed to connect to the cloud service backend.";
-        }
+def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
+    api_url = "https://groq.com"
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
+        
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
     }
-</script>
-</body>
-</html>
+    
+    if target_lang == "ar":
+        system_prompt = "Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:"
+    else:
+        system_prompt = "Summarize the following text clearly and concisely in English without any introductory or conversational text:"
+        
+    payload = {
+        "model": "llama3-8b-8192",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": input_text}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 500
+    }
+    
+    response = requests.post(api_url, json=payload, headers=headers)
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"External AI system error {response.status_code}")
+        
+    result_data = response.json()
+    
+    try:
+        return result_data["choices"]["message"]["content"].strip()
+    except (KeyError, IndexError, TypeError):
+        raise HTTPException(status_code=502, detail="Invalid data structure from external AI engine.")
+
+@app.get("/")
+async def read_index():
+    index_path = os.path.join(BASE_DIR, "index.html")
+    if not os.path.exists(index_path):
+        raise HTTPException(status_code=404, detail="index.html not found on server.")
+    return FileResponse(index_path)
+
+@app.get("/team.html")
+async def read_team():
+    team_path = os.path.join(BASE_DIR, "team.html")
+    if not os.path.exists(team_path):
+        raise HTTPException(status_code=404, detail="team.html not found on server.")
+    return FileResponse(team_path)
+
+@app.post("/summarize")
+async def handle_summary(data: Payload):
+    if not data.text or not data.text.strip():
+        raise HTTPException(status_code=400, detail="Input text cannot be empty.")
+    try:
+        lang_code = "ar" if is_arabic(data.text) else "en"
+        result_text = generate_external_ai_summary(data.text, lang_code)
+        
+        tts_engine = gTTS(text=result_text, lang=lang_code, slow=False)
+        filename = "summary_audio.mp3"
+        tts_engine.save(os.path.join(AUDIO_DIR, filename))
+        
+        return {
+            "status": "success",
+            "summary": result_text,
+            "audio_url": f"/static/{filename}"
+        }
+    except Exception as err:
+        raise HTTPException(status_code=500, detail=str(err))
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
