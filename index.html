@@ -30,7 +30,9 @@
     <div id="displayArea" class="output-box">
         <h3>Key Summary Insights:</h3>
         <p id="txtResponse"></p>
-        <audio id="audioStream" controls style="width: 100%; margin-top: 15px;"></audio>
+        <div style="margin-top: 15px;">
+            <audio id="audioStream" controls style="width: 100%;"></audio>
+        </div>
     </div>
     <div id="errArea" class="error-message"></div>
     
@@ -41,47 +43,73 @@
 </div>
 
 <script>
+    function isArabic(text) {
+        const arabicPattern = /[\u0600-\u06FF]/;
+        return arabicPattern.test(text);
+    }
+
     async function requestProcessing() {
         const textPayload = document.getElementById('rawTextField').value;
         const errArea = document.getElementById('errArea');
         const displayArea = document.getElementById('displayArea');
         const txtResponse = document.getElementById('txtResponse');
+        const audioPlayer = document.getElementById('audioStream');
 
         errArea.innerText = "";
-        if (!textPayload) return alert("Please provide some text to process!");
+        if (!textPayload.trim()) return alert("Please provide some text to process!");
 
-        txtResponse.innerText = "Processing text data and generating summary...";
+        txtResponse.innerText = "Processing text data and generating summary via serverless cloud AI...";
         displayArea.style.display = "block";
+        audioPlayer.src = "";
 
         try {
-            const hostDomain = window.location.origin;
-            const apiEndpoint = `${hostDomain}/summarize`;
+            const apiEndpoint = "https://huggingface.co";
+            const targetLang = isArabic(textPayload) ? "ar" : "en";
             
-            const serverResponse = await fetch(apiEndpoint, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ text: textPayload })
-            });
-
-            if (!serverResponse.ok) {
-                displayArea.style.display = "none";
-                errArea.innerText = "Error: Server rejected the request or returned an error.";
-                return;
+            let systemPrompt = "Summarize the following article in a clear, concise, and professional manner in English only without any introductory text:";
+            if (targetLang === "ar") {
+                systemPrompt = "Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:";
             }
 
-            const jsonResult = await serverResponse.json();
+            const response = await fetch(apiEndpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    inputs: `<|system|>\n${systemPrompt}\n<|user|>\n${textPayload}\n<|assistant|>\n`,
+                    parameters: {
+                        max_new_tokens: 250,
+                        temperature: 0.5
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error("Cloud AI network rejection.");
+            }
+
+            const resultData = await response.json();
+            let summaryText = "";
+
+            if (Array.isArray(resultData) && resultData.length > 0 && resultData[0].generated_text) {
+                const fullOutput = resultData[0].generated_text;
+                summaryText = fullOutput.split("<|assistant|>\n").pop().trim();
+            } else {
+                summaryText = "Summary generation complete.";
+            }
+
+            txtResponse.innerText = summaryText;
+
+            const ttsLang = targetLang === "ar" ? "ar" : "en";
+            const voiceUrl = `https://google.com{ttsLang}&client=tw-ob&q=${encodeURIComponent(summaryText)}`;
             
-            txtResponse.innerText = jsonResult.summary;
-            
-            const audioPlayer = document.getElementById('audioStream');
-            audioPlayer.src = `${hostDomain}${jsonResult.audio_url}`;
+            audioPlayer.src = voiceUrl;
             audioPlayer.load();
-            
+
         } catch (netError) {
             displayArea.style.display = "none";
-            errArea.innerText = "Failed to connect to the cloud service backend.";
+            errArea.innerText = "Error: External serverless cloud AI returned an error. Please try again.";
         }
     }
 </script>
