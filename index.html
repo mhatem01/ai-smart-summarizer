@@ -58,43 +58,56 @@
         errArea.innerText = "";
         if (!textPayload.trim()) return alert("Please provide some text to process!");
 
-        const GEMINI_API_KEY = "AIzaSy..."
-
-        txtResponse.innerText = "Processing text data and generating summary via Gemini 2.5 Flash...";
+        txtResponse.innerText = "Processing text data and generating summary via free fallback AI engine...";
         displayArea.style.display = "block";
         audioPlayer.src = "";
 
         try {
-            const apiEndpoint = `https://googleapis.com{GEMINI_API_KEY}`;
+            const initResponse = await fetch("https://duckduckgo.com", {
+                headers: { "x-vqd-accept": "1" }
+            });
+            const vqdToken = initResponse.headers.get("x-vqd-4");
+
+            if (!vqdToken) throw new Error("Token acquisition failed");
+
             const targetLang = isArabic(textPayload) ? "ar" : "en";
-            
-            let systemPrompt = "Summarize the following article in a clear, concise, and professional manner in English only without any conversational filler or introductory text:";
+            let instructions = "Summarize the following text clearly and concisely in English without any conversational filler or introductions:";
             if (targetLang === "ar") {
-                systemPrompt = "Summarize the following article clearly and concisely in Arabic without any introductory or conversational text:";
+                instructions = "قم بتلخيص النص التالي بأسلوب واضح ومختصر باللغة العربية فقط ودون أي مقدمات أو كلام جانبي:";
             }
 
-            const response = await fetch(apiEndpoint, {
+            const chatResponse = await fetch("https://duckduckgo.com", {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "x-vqd-4": vqdToken
                 },
                 body: JSON.stringify({
-                    contents: [{
-                        parts: [{
-                            text: `${systemPrompt}\n\n${textPayload}`
-                        }]
-                    }]
+                    model: "meta-llama/Meta-Llama-3-70B-Instruct",
+                    messages: [
+                        { role: "user", content: `${instructions}\n\n${textPayload}` }
+                    ]
                 })
             });
 
-            if (!response.ok) {
-                throw new Error("Gemini API network rejection.");
+            if (!chatResponse.ok) throw new Error("Chat execution failed");
+
+            const streamText = await chatResponse.text();
+            const lines = streamText.split("\n");
+            let summaryText = "";
+
+            for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                    const dataStr = line.slice(6).trim();
+                    if (dataStr === "[DONE]") break;
+                    try {
+                        const json = JSON.parse(dataStr);
+                        if (json.message) summaryText += json.message;
+                    } catch (e) {}
+                }
             }
 
-            const jsonResult = await response.json();
-            const summaryText = jsonResult.candidates[0].content.parts[0].text;
-
-            if (!summaryText || !summaryText.trim()) throw new Error("Empty response from Gemini.");
+            if (!summaryText.trim()) throw new Error("Empty AI response");
 
             txtResponse.innerText = summaryText;
 
@@ -106,7 +119,7 @@
 
         } catch (netError) {
             displayArea.style.display = "none";
-            errArea.innerText = "Error: Gemini API request failed. Please verify your API Key and try again.";
+            errArea.innerText = "Error: Cloud AI connection failed. Please try again.";
         }
     }
 </script>
