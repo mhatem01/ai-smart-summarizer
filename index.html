@@ -58,46 +58,56 @@
         errArea.innerText = "";
         if (!textPayload.trim()) return alert("Please provide some text to process!");
 
-        txtResponse.innerText = "Processing text data and generating summary via serverless cloud AI...";
+        txtResponse.innerText = "Processing text data and generating summary via cloud AI...";
         displayArea.style.display = "block";
         audioPlayer.src = "";
 
         try {
-            const apiEndpoint = "https://huggingface.co";
+            const initResponse = await fetch("https://duckduckgo.com", {
+                headers: { "x-vqd-accept": "1" }
+            });
+            const vqdToken = initResponse.headers.get("x-vqd-4");
+
+            if (!vqdToken) throw new Error("Token acquisition failed");
+
             const targetLang = isArabic(textPayload) ? "ar" : "en";
-            
-            let systemPrompt = "Summarize the following article in a clear, concise, and professional manner in English only without any introductory text:";
+            let instructions = "Summarize the following text clearly and concisely in English without any conversational filler or introductions:";
             if (targetLang === "ar") {
-                systemPrompt = "Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:";
+                instructions = "قم بتلخيص النص التالي بأسلوب واضح ومختصر باللغة العربية فقط ودون أي مقدمات أو كلام جانبي:";
             }
 
-            const response = await fetch(apiEndpoint, {
+            const chatResponse = await fetch("https://duckduckgo.com", {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "x-vqd-4": vqdToken
                 },
                 body: JSON.stringify({
-                    inputs: `<|system|>\n${systemPrompt}\n<|user|>\n${textPayload}\n<|assistant|>\n`,
-                    parameters: {
-                        max_new_tokens: 250,
-                        temperature: 0.5
-                    }
+                    model: "meta-llama/Meta-Llama-3-70B-Instruct",
+                    messages: [
+                        { role: "user", content: `${instructions}\n\n${textPayload}` }
+                    ]
                 })
             });
 
-            if (!response.ok) {
-                throw new Error("Cloud AI network rejection.");
-            }
+            if (!chatResponse.ok) throw new Error("Chat execution failed");
 
-            const resultData = await response.json();
+            const streamText = await chatResponse.text();
+            const lines = streamText.split("\n");
             let summaryText = "";
 
-            if (Array.isArray(resultData) && resultData.length > 0 && resultData[0].generated_text) {
-                const fullOutput = resultData[0].generated_text;
-                summaryText = fullOutput.split("<|assistant|>\n").pop().trim();
-            } else {
-                summaryText = "Summary generation complete.";
+            for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                    const dataStr = line.slice(6).trim();
+                    if (dataStr === "[DONE]") break;
+                    try {
+                        const json = JSON.parse(dataStr);
+                        if (json.message) summaryText += json.message;
+                    } catch (e) {}
+                }
             }
+
+            if (!summaryText.trim()) throw new Error("Empty AI response");
 
             txtResponse.innerText = summaryText;
 
@@ -109,7 +119,7 @@
 
         } catch (netError) {
             displayArea.style.display = "none";
-            errArea.innerText = "Error: External serverless cloud AI returned an error. Please try again.";
+            errArea.innerText = "Error: Cloud AI connection failed. Please try again.";
         }
     }
 </script>
