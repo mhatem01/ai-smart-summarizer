@@ -52,7 +52,7 @@ def get_groq_keys() -> list:
 def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
     api_keys = get_groq_keys()
     if not api_keys:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY is missing.")
 
     api_url = "https://groq.com"
 
@@ -82,27 +82,37 @@ def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
             response = requests.post(api_url, json=payload, headers=headers, timeout=20)
             if response.status_code == 200:
                 result_data = response.json()
-                return result_data["choices"][0]["message"]["content"].strip()
+                first_choice = result_data["choices"][0]
+                return first_choice["message"]["content"].strip()
             else:
                 last_error = f"Status {response.status_code}: {response.text}"
         except Exception as e:
             last_error = str(e)
             continue
 
-    raise HTTPException(status_code=502, detail=f"All Groq API keys failed. Last error: {last_error}")
+    raise HTTPException(status_code=502, detail=f"Groq API failed: {last_error}")
+
+@app.get("/health")
+async def health_check():
+    keys = get_groq_keys()
+    first_key = keys[0][:6] if keys else "NONE"
+    return {
+        "keys_loaded": len(keys),
+        "key_prefix": first_key
+    }
 
 @app.get("/")
 async def read_index():
     index_path = os.path.join(BASE_DIR, "index.html")
     if not os.path.exists(index_path):
-        raise HTTPException(status_code=404, detail="index.html not found on server.")
+        raise HTTPException(status_code=404, detail="index.html not found.")
     return FileResponse(index_path)
 
 @app.get("/team.html")
 async def read_team():
     team_path = os.path.join(BASE_DIR, "team.html")
     if not os.path.exists(team_path):
-        raise HTTPException(status_code=404, detail="team.html not found on server.")
+        raise HTTPException(status_code=404, detail="team.html not found.")
     return FileResponse(team_path)
 
 @app.post("/summarize")
