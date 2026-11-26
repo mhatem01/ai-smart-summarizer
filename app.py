@@ -40,12 +40,19 @@ class Payload(BaseModel):
 def is_arabic(text: str) -> bool:
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
-def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY environment variable is missing.")
+def get_api_keys() -> list:
+    raw_keys = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or ""
+    keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+    for i in range(1, 10):
+        extra_key = os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
+        if extra_key and extra_key not in keys:
+            keys.append(extra_key)
+    return keys
 
-    api_url = f"https://googleapis.com{api_key}"
+def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
+    api_keys = get_api_keys()
+    if not api_keys:
+        raise HTTPException(status_code=500, detail="No GEMINI_API_KEY found in environment variables.")
 
     if target_lang == "ar":
         prompt = f"Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:\n\n{input_text}"
@@ -58,22 +65,27 @@ def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
         }]
     }
 
-    response = requests.post(
-        api_url,
-        json=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=20
-    )
+    last_error = "Unknown error"
 
-    if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Gemini API error {response.status_code}: {response.text}")
+    for api_key in api_keys:
+        api_url = f"https://googleapis.com{api_key}"
+        try:
+            response = requests.post(
+                api_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=20
+            )
+            if response.status_code == 200:
+                result_data = response.json()
+                return result_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            else:
+                last_error = f"Status {response.status_code}: {response.text}"
+        except Exception as e:
+            last_error = str(e)
+            continue
 
-    result_data = response.json()
-
-    try:
-        return result_data["candidates"]["content"]["parts"]["text"].strip()
-    except (KeyError, IndexError, TypeError):
-        raise HTTPException(status_code=502, detail="Invalid data structure from Gemini API.")
+    raise HTTPException(status_code=502, detail=f"All API keys failed. Last error: {last_error}")
 
 @app.get("/")
 async def read_index():
