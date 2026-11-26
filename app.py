@@ -40,79 +40,53 @@ class Payload(BaseModel):
 def is_arabic(text: str) -> bool:
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
-def get_groq_keys() -> list:
-    raw_keys = os.environ.get("GROQ_API_KEYS") or os.environ.get("GROQ_API_KEY") or ""
-    keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
-    for i in range(1, 10):
-        extra = os.environ.get(f"GROQ_API_KEY_{i}", "").strip()
-        if extra and extra not in keys:
-            keys.append(extra)
-    return keys
-
 def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
-    api_keys = get_groq_keys()
-    if not api_keys:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY is missing.")
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY environment variable is missing.")
 
-    api_url = "https://groq.com"
+    api_url = f"https://googleapis.com{api_key}"
 
     if target_lang == "ar":
-        system_prompt = "Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:"
+        prompt = f"Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:\n\n{input_text}"
     else:
-        system_prompt = "Summarize the following text clearly and concisely in English without any introductory or conversational text:"
+        prompt = f"Summarize the following text clearly and concisely in English without any introductory or conversational text:\n\n{input_text}"
 
     payload = {
-        "model": "llama-3.1-8b-instant",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": input_text}
-        ],
-        "temperature": 0.2,
-        "max_tokens": 500
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
     }
 
-    last_error = "Unknown error"
+    response = requests.post(
+        api_url,
+        json=payload,
+        headers={"Content-Type": "application/json"},
+        timeout=20
+    )
 
-    for api_key in api_keys:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        try:
-            response = requests.post(api_url, json=payload, headers=headers, timeout=20)
-            if response.status_code == 200:
-                result_data = response.json()
-                first_choice = result_data["choices"][0]
-                return first_choice["message"]["content"].strip()
-            else:
-                last_error = f"Status {response.status_code}: {response.text}"
-        except Exception as e:
-            last_error = str(e)
-            continue
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Gemini API error {response.status_code}: {response.text}")
 
-    raise HTTPException(status_code=502, detail=f"Groq API failed: {last_error}")
+    result_data = response.json()
 
-@app.get("/health")
-async def health_check():
-    keys = get_groq_keys()
-    first_key = keys[0][:6] if keys else "NONE"
-    return {
-        "keys_loaded": len(keys),
-        "key_prefix": first_key
-    }
+    try:
+        return result_data["candidates"]["content"]["parts"]["text"].strip()
+    except (KeyError, IndexError, TypeError):
+        raise HTTPException(status_code=502, detail="Invalid data structure from Gemini API.")
 
 @app.get("/")
 async def read_index():
     index_path = os.path.join(BASE_DIR, "index.html")
     if not os.path.exists(index_path):
-        raise HTTPException(status_code=404, detail="index.html not found.")
+        raise HTTPException(status_code=404, detail="index.html not found on server.")
     return FileResponse(index_path)
 
 @app.get("/team.html")
 async def read_team():
     team_path = os.path.join(BASE_DIR, "team.html")
     if not os.path.exists(team_path):
-        raise HTTPException(status_code=404, detail="team.html not found.")
+        raise HTTPException(status_code=404, detail="team.html not found on server.")
     return FileResponse(team_path)
 
 @app.post("/summarize")
