@@ -20,14 +20,12 @@ import {
   HiUsers,
   HiArrowLeft,
   HiTrash,
-  HiDownload,
 } from "react-icons/hi";
 
 function App() {
   const [text, setText] = useState("");
   const [summary, setSummary] = useState("");
   const [loading, setLoading] = useState(false);
-  const [downloadingAudio, setDownloadingAudio] = useState(false);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -185,66 +183,6 @@ function App() {
     setIsSpeaking(false);
   };
 
-  const triggerFileDownload = (blob, filename) => {
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(downloadUrl);
-  };
-
-  const handleDownloadAudio = async () => {
-    if (!summary) return;
-    setDownloadingAudio(true);
-    setError(null);
-
-    const arabic = isArabic(summary);
-    const lang = arabic ? "ar" : "en";
-    const fileName = `AI_Summary_${lang.toUpperCase()}.mp3`;
-
-    try {
-      if (!arabic) {
-        const seUrl = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(
-          summary
-        )}`;
-        const res = await fetch(seUrl);
-        if (res.ok) {
-          const blob = await res.blob();
-          triggerFileDownload(blob, fileName);
-          return;
-        }
-      }
-
-      const chunks = summary.match(/.{1,180}(\s|$)/g) || [summary.slice(0, 180)];
-      const audioBlobs = [];
-
-      for (const chunk of chunks) {
-        const targetUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(
-          chunk.trim()
-        )}`;
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("Proxy TTS fetch failed.");
-        const blob = await response.blob();
-        audioBlobs.push(blob);
-      }
-
-      const combinedBlob = new Blob(audioBlobs, { type: "audio/mpeg" });
-      triggerFileDownload(combinedBlob, fileName);
-    } catch (err) {
-      console.error("Audio download error:", err);
-      const fallbackUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(
-        summary.slice(0, 200)
-      )}`;
-      window.open(fallbackUrl, "_blank");
-    } finally {
-      setDownloadingAudio(false);
-    }
-  };
-
   const clearAll = () => {
     handleStopSpeech();
     setText("");
@@ -397,7 +335,7 @@ function App() {
                   <h2 className="text-xl font-bold text-purple-900 flex items-center gap-2">
                     <IoSparkles className="text-purple-600" /> AI Summary
                   </h2>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex gap-2">
                     <button
                       onClick={handleSpeak}
                       className={`btn btn-sm ${
@@ -411,23 +349,6 @@ function App() {
                       ) : (
                         <>
                           <HiVolumeUp className="w-4 h-4" /> Listen
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={handleDownloadAudio}
-                      disabled={downloadingAudio}
-                      className="btn btn-sm btn-success text-white gap-1"
-                    >
-                      {downloadingAudio ? (
-                        <>
-                          <span className="loading loading-spinner loading-xs"></span>
-                          Downloading...
-                        </>
-                      ) : (
-                        <>
-                          <HiDownload className="w-4 h-4" /> Download MP3
                         </>
                       )}
                     </button>
