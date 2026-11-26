@@ -1,117 +1,400 @@
-# --------------------------------------------------------
-# Core Backend Service
-# Domain: Engineering and Technology
-# Focus: Applied Mathematics and Artificial Intelligence
-# Field: Computer and Data Science
-# Created by: MOHAMED HATEM MOHAMED ABDELAZIZ MOHAMED 
-#           & EBRAHIM MOHAMED EBRAHIM HAMADA RASAD
-# --------------------------------------------------------
+/* --------------------------------------------------------
+ * Core Frontend Service
+ * Domain: Engineering and Technology
+ * Focus: Applied Mathematics and Artificial Intelligence
+ * Field: Computer and Data Science
+ * Created by: MOHAMED HATEM MOHAMED ABDELAZIZ MOHAMED 
+ *           & EBRAHIM MOHAMED EBRAHIM HAMADA RASAD
+ * -------------------------------------------------------- */
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from gtts import gTTS
-import os
-import re
-import requests
+import { GoogleGenAI } from "@google/genai";
+import { useState, useEffect } from "react";
+import { IoSparkles } from "react-icons/io5";
+import {
+  HiClipboard,
+  HiExclamationCircle,
+  HiPencilAlt,
+  HiCheck,
+  HiVolumeUp,
+  HiStop,
+  HiUsers,
+  HiArrowLeft,
+  HiTrash,
+} from "react-icons/hi";
 
-app = FastAPI()
+function App() {
+  const [text, setText] = useState("");
+  const [summary, setSummary] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showTeamPage, setShowTeamPage] = useState(false);
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+  useEffect(() => {
+    return () => {
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-AUDIO_DIR = os.path.join(BASE_DIR, "static")
-if not os.path.exists(AUDIO_DIR):
-    os.makedirs(AUDIO_DIR)
+  const isArabic = (str) => /[\u0600-\u06FF]/.test(str);
 
-app.mount("/static", StaticFiles(directory=AUDIO_DIR), name="static")
+  const countWords = (str) => {
+    return str
+      .trim()
+      .split(/\s+/)
+      .filter((word) => word.length > 0).length;
+  };
 
-class Payload(BaseModel):
-    text: str
+  const countSentences = (str) => {
+    return str
+      .trim()
+      .split(/[.!?؟]+/)
+      .filter((sentence) => sentence.trim().length > 0).length;
+  };
 
-def is_arabic(text: str) -> bool:
-    return bool(re.search(r'[\u0600-\u06FF]', text))
+  const pluralize = (count, singular, plural) => {
+    return count === 1 ? singular : plural;
+  };
 
-def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY environment variable is missing.")
+  const pasteText = async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      setText(clipboardText);
+      setError(null);
+    } catch (err) {
+      console.error("Failed to paste: ", err);
+      setError("Failed to paste text. Please paste it manually using Ctrl+V.");
+    }
+  };
 
-    api_url = f"https://googleapis.com{api_key}"
-
-    if target_lang == "ar":
-        prompt = f"Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:\n\n{input_text}"
-    else:
-        prompt = f"Summarize the following text clearly and concisely in English without any introductory or conversational text:\n\n{input_text}"
-
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
+  const summarizeText = async () => {
+    if (!text.trim()) {
+      setError("Please enter some text to summarize.");
+      return;
     }
 
-    response = requests.post(
-        api_url,
-        json=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=20
-    )
+    if (text.trim().length < 50) {
+      setError(
+        "Text is too short to summarize. Please enter at least 50 characters."
+      );
+      return;
+    }
 
-    if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Gemini API error {response.status_code}: {response.text}")
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim();
+    if (!apiKey) {
+      setError(
+        "API Key is missing! Please add VITE_GEMINI_API_KEY in your environment variables."
+      );
+      return;
+    }
 
-    result_data = response.json()
+    handleStopSpeech();
+    setLoading(true);
+    setError(null);
+    setSummary("");
 
-    try:
-        return result_data["candidates"]["content"]["parts"]["text"].strip()
-    except (KeyError, IndexError, TypeError):
-        raise HTTPException(status_code=502, detail="Invalid data structure from Gemini API.")
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const models = [
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash",
+        "gemini-4-hydrogen",
+      ];
+      let success = false;
+      let errorsList = [];
 
-@app.get("/")
-async def read_index():
-    index_path = os.path.join(BASE_DIR, "index.html")
-    if not os.path.exists(index_path):
-        raise HTTPException(status_code=404, detail="index.html not found on server.")
-    return FileResponse(index_path)
+      const promptInstruction = isArabic(text)
+        ? "لخّص النص التالي بأسلوب واضح ومختصر باللغة العربية:\n\n"
+        : "Provide a concise, clear summary of the following text:\n\n";
 
-@app.get("/team.html")
-async def read_team():
-    team_path = os.path.join(BASE_DIR, "team.html")
-    if not os.path.exists(team_path):
-        raise HTTPException(status_code=404, detail="team.html not found on server.")
-    return FileResponse(team_path)
+      for (const modelName of models) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: promptInstruction + text,
+          });
 
-@app.post("/summarize")
-async def handle_summary(data: Payload):
-    if not data.text or not data.text.strip():
-        raise HTTPException(status_code=400, detail="Input text cannot be empty.")
-    try:
-        lang_code = "ar" if is_arabic(data.text) else "en"
-        result_text = generate_external_ai_summary(data.text, lang_code)
-
-        tts_engine = gTTS(text=result_text, lang=lang_code, slow=False)
-        filename = "summary_audio.mp3"
-        tts_engine.save(os.path.join(AUDIO_DIR, filename))
-
-        return {
-            "status": "success",
-            "summary": result_text,
-            "audio_url": f"/static/{filename}"
+          if (response && response.text) {
+            setSummary(response.text.trim());
+            success = true;
+            break;
+          }
+        } catch (err) {
+          console.error(`Error with ${modelName}:`, err);
+          errorsList.push(`${modelName}: ${err?.message || "Failed"}`);
         }
-    except HTTPException as http_err:
-        raise http_err
-    except Exception as err:
-        raise HTTPException(status_code=500, detail=str(err))
+      }
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+      if (!success) {
+        setError(`Google API Error -> ${errorsList[0] || "Unknown error"}`);
+      }
+    } catch (globalErr) {
+      setError(`Connection Error: ${globalErr.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy: ", err);
+      setError("Failed to copy to clipboard. Please try again.");
+    }
+  };
+
+  const handleSpeak = () => {
+    if (!summary || !("speechSynthesis" in window)) return;
+
+    if (isSpeaking) {
+      handleStopSpeech();
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(summary);
+    utterance.lang = isArabic(summary) ? "ar-SA" : "en-US";
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = (event) => {
+      console.error("SpeechSynthesisUtterance error", event);
+      setIsSpeaking(false);
+    };
+
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleStopSpeech = () => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+  };
+
+  const clearAll = () => {
+    handleStopSpeech();
+    setText("");
+    setSummary("");
+    setError(null);
+    setCopied(false);
+  };
+
+  if (showTeamPage) {
+    return (
+      <div
+        data-theme="light"
+        className="min-h-screen bg-gradient-to-br from-purple-100 via-blue-100 to-pink-100 flex items-center justify-center p-4"
+      >
+        <div className="card bg-base-100 shadow-2xl max-w-3xl w-full p-8 rounded-2xl border border-purple-200">
+          <div className="text-center mb-6">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-4 flex items-center justify-center gap-2">
+              <HiUsers className="text-purple-600" /> The Ingenium Core Team
+            </h1>
+            <div className="bg-purple-900 p-5 rounded-xl max-w-md mx-auto text-left border border-purple-950 shadow-inner">
+              <div className="flex items-center gap-2 text-purple-200 font-bold mb-3">
+                <span className="text-base">🌐</span> Project Technical Foundation:
+              </div>
+              <ul className="list-disc list-inside text-sm text-purple-100 font-semibold space-y-2 pl-2">
+                <li>Engineering and Technology</li>
+                <li>Applied Mathematics and Artificial Intelligence</li>
+                <li>Computer and Data Science</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="space-y-4 my-8">
+            <div className="p-5 bg-base-100 shadow-md border-l-4 border-purple-600 rounded-r-xl border border-base-200">
+              <h2 className="font-bold text-purple-600 text-lg">
+                MOHAMED HATEM MOHAMED ABDELAZIZ MOHAMED
+              </h2>
+              <p className="text-sm text-base-content/70 mt-1">
+                Systems Architecture & Backend Security Core
+              </p>
+            </div>
+
+            <div className="p-5 bg-base-100 shadow-md border-l-4 border-blue-600 rounded-r-xl border border-base-200">
+              <h2 className="font-bold text-blue-600 text-lg">
+                EBRAHIM MOHAMED EBRAHIM HAMADA RASAD
+              </h2>
+              <p className="text-sm text-base-content/70 mt-1">
+                User Interface Integration & API Data Handlers
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center mt-6">
+            <button
+              onClick={() => setShowTeamPage(false)}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-purple-600 hover:text-purple-800 transition-colors btn btn-ghost btn-sm"
+            >
+              <HiArrowLeft className="w-4 h-4" /> Back to Summarizer App
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-theme="light"
+      className="min-h-screen bg-gradient-to-br from-purple-100 via-blue-100 to-pink-100"
+    >
+      <div className="container mx-auto px-4 py-12">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent flex items-center justify-center gap-3">
+            <IoSparkles className="text-purple-600 hidden sm:block" /> AI Text Summarizer
+          </h1>
+          <p className="text-xl text-base-content/70 font-medium">
+            Powered by Google Gemini AI
+          </p>
+        </div>
+
+        <div className="card bg-base-100 shadow-2xl max-w-5xl mx-auto">
+          <div className="card-body p-6 md:p-8">
+            <div className="mb-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                <label className="text-lg font-bold flex items-center gap-2 text-base-content">
+                  <HiPencilAlt className="text-purple-600 w-5 h-5" /> Enter Your Text
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={pasteText}
+                    className="btn btn-sm btn-outline btn-primary gap-1"
+                  >
+                    <HiClipboard className="w-4 h-4" /> Paste Text
+                  </button>
+                  {text && (
+                    <button
+                      onClick={clearAll}
+                      className="btn btn-sm btn-outline btn-error gap-1"
+                    >
+                      <HiTrash className="w-4 h-4" /> Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <textarea
+                className="textarea textarea-bordered w-full h-48 text-base focus:outline-none focus:border-purple-500"
+                placeholder="Paste or type your long article, essay, or notes here (at least 50 characters)..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                dir="auto"
+              ></textarea>
+
+              <div className="flex justify-between text-xs text-base-content/60 mt-2 font-medium">
+                <span>
+                  {countWords(text)} {pluralize(countWords(text), "word", "words")} ·{" "}
+                  {countSentences(text)}{" "}
+                  {pluralize(countSentences(text), "sentence", "sentences")}
+                </span>
+                <span>{text.length} characters</span>
+              </div>
+            </div>
+
+            {error && (
+              <div className="alert alert-error mb-6 shadow-md">
+                <HiExclamationCircle className="w-6 h-6 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              onClick={summarizeText}
+              disabled={loading || !text.trim()}
+              className="btn btn-primary w-full text-lg bg-gradient-to-r from-purple-600 to-blue-600 border-none hover:from-purple-700 hover:to-blue-700 text-white shadow-lg"
+            >
+              {loading ? (
+                <>
+                  <span className="loading loading-spinner loading-md"></span>
+                  Summarizing...
+                </>
+              ) : (
+                <>
+                  <IoSparkles className="w-5 h-5" /> Summarize Text
+                </>
+              )}
+            </button>
+
+            {summary && (
+              <div className="mt-8 p-6 bg-purple-50 rounded-xl border border-purple-200 shadow-inner">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+                  <h2 className="text-xl font-bold text-purple-900 flex items-center gap-2">
+                    <IoSparkles className="text-purple-600" /> AI Summary
+                  </h2>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSpeak}
+                      className={`btn btn-sm ${
+                        isSpeaking ? "btn-error" : "btn-secondary"
+                      } gap-1`}
+                    >
+                      {isSpeaking ? (
+                        <>
+                          <HiStop className="w-4 h-4" /> Stop Audio
+                        </>
+                      ) : (
+                        <>
+                          <HiVolumeUp className="w-4 h-4" /> Listen
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={copyToClipboard}
+                      className="btn btn-sm btn-outline btn-primary gap-1"
+                    >
+                      {copied ? (
+                        <>
+                          <HiCheck className="w-4 h-4 text-success" /> Copied!
+                        </>
+                      ) : (
+                        <>
+                          <HiClipboard className="w-4 h-4" /> Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <p
+                  className="text-base-content text-lg leading-relaxed whitespace-pre-line"
+                  dir="auto"
+                >
+                  {summary}
+                </p>
+              </div>
+            )}
+
+            <div className="mt-10 pt-6 border-t border-base-200 text-center">
+              <button
+                onClick={() => setShowTeamPage(true)}
+                className="btn btn-outline btn-accent btn-sm gap-2"
+              >
+                <HiUsers className="w-4 h-4" /> View Project Team & Details
+              </button>
+              <p className="text-xs text-base-content/50 mt-3">
+                All Rights Reserved © Team #01 - CS Division 2026
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
