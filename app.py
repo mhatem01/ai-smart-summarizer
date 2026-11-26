@@ -61,6 +61,7 @@ def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
 
     payload = {
         "contents": [{
+            "role": "user",
             "parts": [{"text": prompt}]
         }]
     }
@@ -68,7 +69,11 @@ def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
     last_error = "Unknown error"
 
     for api_key in api_keys:
-        api_url = f"https://googleapis.com{api_key}"
+        if api_key.startswith("AQ."):
+            api_url = f"https://googleapis.com{api_key}"
+        else:
+            api_url = f"https://googleapis.com{api_key}"
+
         try:
             response = requests.post(
                 api_url,
