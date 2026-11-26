@@ -41,42 +41,39 @@ def is_arabic(text: str) -> bool:
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
 def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
-    api_url = "https://groq.com"
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
-        
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY environment variable is missing.")
+
+    api_url = f"https://googleapis.com{api_key}"
+
     if target_lang == "ar":
-        system_prompt = "Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:"
+        prompt = f"Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:\n\n{input_text}"
     else:
-        system_prompt = "Summarize the following text clearly and concisely in English without any introductory or conversational text:"
-        
+        prompt = f"Summarize the following text clearly and concisely in English without any introductory or conversational text:\n\n{input_text}"
+
     payload = {
-        "model": "llama3-8b-8192",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": input_text}
-        ],
-        "temperature": 0.2,
-        "max_tokens": 500
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
     }
-    
-    response = requests.post(api_url, json=payload, headers=headers)
-    
+
+    response = requests.post(
+        api_url,
+        json=payload,
+        headers={"Content-Type": "application/json"},
+        timeout=20
+    )
+
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"External AI system error {response.status_code}")
-        
+        raise HTTPException(status_code=502, detail=f"Gemini API error {response.status_code}: {response.text}")
+
     result_data = response.json()
-    
+
     try:
-        return result_data["choices"]["message"]["content"].strip()
+        return result_data["candidates"]["content"]["parts"]["text"].strip()
     except (KeyError, IndexError, TypeError):
-        raise HTTPException(status_code=502, detail="Invalid data structure from external AI engine.")
+        raise HTTPException(status_code=502, detail="Invalid data structure from Gemini API.")
 
 @app.get("/")
 async def read_index():
@@ -99,16 +96,18 @@ async def handle_summary(data: Payload):
     try:
         lang_code = "ar" if is_arabic(data.text) else "en"
         result_text = generate_external_ai_summary(data.text, lang_code)
-        
+
         tts_engine = gTTS(text=result_text, lang=lang_code, slow=False)
         filename = "summary_audio.mp3"
         tts_engine.save(os.path.join(AUDIO_DIR, filename))
-        
+
         return {
             "status": "success",
             "summary": result_text,
             "audio_url": f"/static/{filename}"
         }
+    except HTTPException as http_err:
+        raise http_err
     except Exception as err:
         raise HTTPException(status_code=500, detail=str(err))
 
