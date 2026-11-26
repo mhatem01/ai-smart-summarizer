@@ -206,7 +206,6 @@ function App() {
     const fileName = `AI_Summary_${lang.toUpperCase()}.mp3`;
 
     try {
-      // المحاولة الأولى: استخدام واجهة تدعم CORS مباشرة بدون قيود المتصفح
       if (!arabic) {
         const seUrl = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(
           summary
@@ -217,25 +216,8 @@ function App() {
           triggerFileDownload(blob, fileName);
           return;
         }
-      } else {
-        const nutqRes = await fetch("https://nutq.online/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: summary,
-            voice: "ar-EG-SalmaNeural",
-            speed: 0,
-            pitch: 0,
-          }),
-        });
-        if (nutqRes.ok) {
-          const blob = await nutqRes.blob();
-          triggerFileDownload(blob, fileName);
-          return;
-        }
       }
 
-      // المحاولة الثانية (الاحتياطية): تجاوز قيود CORS عبر بروكسي مفتوح لـ Google TTS
       const chunks = summary.match(/.{1,180}(\s|$)/g) || [summary.slice(0, 180)];
       const audioBlobs = [];
 
@@ -243,9 +225,7 @@ function App() {
         const targetUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(
           chunk.trim()
         )}`;
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
-          targetUrl
-        )}`;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
         const response = await fetch(proxyUrl);
         if (!response.ok) throw new Error("Proxy TTS fetch failed.");
         const blob = await response.blob();
@@ -256,7 +236,6 @@ function App() {
       triggerFileDownload(combinedBlob, fileName);
     } catch (err) {
       console.error("Audio download error:", err);
-      // حل أخير في حال حظر جميع طلبات Fetch: فتح رابط الصوت في تبويب جديد ليحفظه المستخدم مباشرة
       const fallbackUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(
         summary.slice(0, 200)
       )}`;
