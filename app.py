@@ -40,57 +40,56 @@ class Payload(BaseModel):
 def is_arabic(text: str) -> bool:
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
-def get_api_keys() -> list:
-    raw_keys = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or ""
+def get_groq_keys() -> list:
+    raw_keys = os.environ.get("GROQ_API_KEYS") or os.environ.get("GROQ_API_KEY") or ""
     keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
     for i in range(1, 10):
-        extra_key = os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
-        if extra_key and extra_key not in keys:
-            keys.append(extra_key)
+        extra = os.environ.get(f"GROQ_API_KEY_{i}", "").strip()
+        if extra and extra not in keys:
+            keys.append(extra)
     return keys
 
 def generate_external_ai_summary(input_text: str, target_lang: str) -> str:
-    api_keys = get_api_keys()
+    api_keys = get_groq_keys()
     if not api_keys:
-        raise HTTPException(status_code=500, detail="No GEMINI_API_KEY found in environment variables.")
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
+
+    api_url = "https://groq.com"
 
     if target_lang == "ar":
-        prompt = f"Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:\n\n{input_text}"
+        system_prompt = "Summarize the following text clearly and concisely in Arabic without any introductory or conversational text:"
     else:
-        prompt = f"Summarize the following text clearly and concisely in English without any introductory or conversational text:\n\n{input_text}"
+        system_prompt = "Summarize the following text clearly and concisely in English without any introductory or conversational text:"
 
     payload = {
-        "contents": [{
-            "role": "user",
-            "parts": [{"text": prompt}]
-        }]
+        "model": "llama-3.1-8b-instant",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": input_text}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 500
     }
 
     last_error = "Unknown error"
 
     for api_key in api_keys:
-        if api_key.startswith("AQ."):
-            api_url = f"https://googleapis.com{api_key}"
-        else:
-            api_url = f"https://googleapis.com{api_key}"
-
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
         try:
-            response = requests.post(
-                api_url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=20
-            )
+            response = requests.post(api_url, json=payload, headers=headers, timeout=20)
             if response.status_code == 200:
                 result_data = response.json()
-                return result_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                return result_data["choices"][0]["message"]["content"].strip()
             else:
                 last_error = f"Status {response.status_code}: {response.text}"
         except Exception as e:
             last_error = str(e)
             continue
 
-    raise HTTPException(status_code=502, detail=f"All API keys failed. Last error: {last_error}")
+    raise HTTPException(status_code=502, detail=f"All Groq API keys failed. Last error: {last_error}")
 
 @app.get("/")
 async def read_index():
